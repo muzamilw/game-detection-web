@@ -354,10 +354,13 @@
             try {
                 statusText.innerHTML = 'Loading YOLO11 model...<span class="loading"></span>';
                 modelStatus.textContent = 'Loading...';
+
+                const modelBuffer = await fetchWithCache(MODEL_URL);
                 
-                session = await ort.InferenceSession.create(MODEL_URL, {
+                session = await ort.InferenceSession.create(modelBuffer, {
                     executionProviders: ['wasm'],
-                    graphOptimizationLevel: 'all'
+                    graphOptimizationLevel: 'all',
+                    enableOrtIoBinding: true
                 });
                 
                 statusText.textContent = 'YOLO11 model loaded successfully! Ready to detect 80 object classes.';
@@ -663,6 +666,25 @@
             }, 5000);
         }
 
+        async function fetchWithCache(url, cacheName = "yolo-model-cache") {
+            const cache = await caches.open(cacheName);
+            const cached = await cache.match(url);
+        
+            if (cached) {
+                console.log("Loaded model from cache");
+                return cached.arrayBuffer();
+            }
+        
+            const response = await fetch(url);
+            const buffer = await response.arrayBuffer();
+        
+            await cache.put(url, new Response(buffer));
+            console.log("Model cached for future use");
+        
+            return buffer;
+        }
+
+
         startBtn.addEventListener('click', startDetection);
         stopBtn.addEventListener('click', stopDetection);
         switchBtn.addEventListener('click', switchCamera);
@@ -676,6 +698,9 @@
         window.addEventListener('load', () => {
             statusText.textContent = 'Ready! Click "Start Detection" to load YOLO11 and begin.';
         });
+
+
+        
     </script>
 </body>
 </html>
