@@ -82,7 +82,7 @@
             left: 0;
             width: 100%;
             height: 100%;
-            /* transform: scaleX(-1); */
+          
         }
         
         .controls {
@@ -518,7 +518,7 @@
                 detections.forEach((det, index) => {
     const color = colors[index % colors.length];
 
-    // Mirror X for drawing because the video is flipped
+    // 🔁 Mirror X to match the flipped video
     const drawX = canvas.width - det.x - det.w;
     const drawY = det.y;
 
@@ -527,7 +527,7 @@
     ctx.lineWidth = 6;
     ctx.strokeRect(drawX, drawY, det.w, det.h);
 
-    // Label text
+    // Label
     const label = `${det.className} ${Math.round(det.confidence * 100)}%`;
     ctx.font = 'bold 20px Arial';
     const textWidth = ctx.measureText(label).width;
@@ -538,34 +538,39 @@
     ctx.fillStyle = '#fff';
     ctx.fillText(label, drawX + 5, drawY - 7);
 
-    // Fancy corners – use drawX instead of det.x
+    // Fancy corners – all use drawX instead of det.x
     const cornerLen = 15;
     ctx.lineWidth = 6;
 
+    // top-left
     ctx.beginPath();
     ctx.moveTo(drawX, drawY + cornerLen);
     ctx.lineTo(drawX, drawY);
     ctx.lineTo(drawX + cornerLen, drawY);
     ctx.stroke();
 
+    // top-right
     ctx.beginPath();
     ctx.moveTo(drawX + det.w - cornerLen, drawY);
     ctx.lineTo(drawX + det.w, drawY);
     ctx.lineTo(drawX + det.w, drawY + cornerLen);
     ctx.stroke();
 
+    // bottom-left
     ctx.beginPath();
     ctx.moveTo(drawX, drawY + det.h - cornerLen);
     ctx.lineTo(drawX, drawY + det.h);
     ctx.lineTo(drawX + cornerLen, drawY + det.h);
     ctx.stroke();
 
+    // bottom-right
     ctx.beginPath();
     ctx.moveTo(drawX + det.w - cornerLen, drawY + det.h);
     ctx.lineTo(drawX + det.w, drawY + det.h);
     ctx.lineTo(drawX + det.w, drawY + det.h - cornerLen);
     ctx.stroke();
 });
+
                 
                 frameCount++;
                 const now = Date.now();
