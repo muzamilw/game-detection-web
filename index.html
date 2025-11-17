@@ -1,536 +1,496 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>YOLOv8 Object Detection (Browser)</title>
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-  />
-  <style>
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        sans-serif;
-      background: #111;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      height: 100vh;
-    }
-
-    h1 {
-      font-size: 1.1rem;
-      margin: 0.5rem;
-      text-align: center;
-    }
-
-    #container {
-      position: relative;
-      width: 100%;
-      max-width: 640px;
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-      background: #000;
-    }
-
-    video,
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: auto;
-    }
-
-    #overlay {
-      pointer-events: none;
-    }
-
-    #controls {
-      width: 100%;
-      max-width: 640px;
-      padding: 0.5rem;
-      box-sizing: border-box;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      justify-content: center;
-      align-items: center;
-      background: #181818;
-      border-top: 1px solid #333;
-    }
-
-    button {
-      padding: 0.5rem 0.9rem;
-      border-radius: 999px;
-      border: none;
-      background: #1e88e5;
-      color: white;
-      font-size: 0.9rem;
-      font-weight: 500;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    #status {
-      font-size: 0.8rem;
-      color: #ccc;
-      text-align: center;
-      flex: 1 1 100%;
-    }
-
-    #preprocessCanvas {
-      display: none; /* hidden; for resizing to model input */
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Real-time Object Detection</title>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.11.0"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd@2.2.3"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 20px;
+        }
+        
+        .container {
+            background: white;
+            border-radius: 20px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.3);
+            padding: 30px;
+            max-width: 800px;
+            width: 100%;
+        }
+        
+        h1 {
+            color: #333;
+            margin-bottom: 10px;
+            font-size: 28px;
+            text-align: center;
+        }
+        
+        .subtitle {
+            color: #666;
+            text-align: center;
+            margin-bottom: 25px;
+            font-size: 14px;
+        }
+        
+        .video-container {
+            position: relative;
+            width: 100%;
+            background: #000;
+            border-radius: 12px;
+            overflow: hidden;
+            margin-bottom: 20px;
+        }
+        
+        #video {
+            width: 100%;
+            display: block;
+            transform: scaleX(-1);
+        }
+        
+        #canvas {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            transform: scaleX(-1);
+        }
+        
+        .controls {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+            justify-content: center;
+            margin-bottom: 20px;
+        }
+        
+        button {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            border: none;
+            padding: 12px 30px;
+            border-radius: 25px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+            box-shadow: 0 4px 15px rgba(102, 126, 234, 0.4);
+        }
+        
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 6px 20px rgba(102, 126, 234, 0.6);
+        }
+        
+        button:active {
+            transform: translateY(0);
+        }
+        
+        button:disabled {
+            background: #ccc;
+            cursor: not-allowed;
+            box-shadow: none;
+        }
+        
+        .status {
+            text-align: center;
+            padding: 15px;
+            background: #f8f9fa;
+            border-radius: 10px;
+            margin-bottom: 15px;
+        }
+        
+        .status-text {
+            color: #333;
+            font-weight: 600;
+            margin-bottom: 8px;
+        }
+        
+        .loading {
+            display: inline-block;
+            width: 20px;
+            height: 20px;
+            border: 3px solid #f3f3f3;
+            border-top: 3px solid #667eea;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin-left: 10px;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+        
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+            gap: 15px;
+            margin-top: 20px;
+        }
+        
+        .stat-card {
+            background: linear-gradient(135deg, #667eea15 0%, #764ba215 100%);
+            padding: 15px;
+            border-radius: 10px;
+            text-align: center;
+        }
+        
+        .stat-label {
+            color: #666;
+            font-size: 12px;
+            margin-bottom: 5px;
+        }
+        
+        .stat-value {
+            color: #333;
+            font-size: 24px;
+            font-weight: 700;
+        }
+        
+        .error {
+            background: #fee;
+            color: #c33;
+            padding: 15px;
+            border-radius: 10px;
+            margin-top: 15px;
+            display: none;
+        }
+        
+        @media (max-width: 600px) {
+            .container {
+                padding: 20px;
+            }
+            
+            h1 {
+                font-size: 24px;
+            }
+            
+            button {
+                padding: 10px 20px;
+                font-size: 14px;
+            }
+        }
+    </style>
 </head>
 <body>
-  <h1>YOLOv8 Object Detection (Browser)</h1>
+    <div class="container">
+        <h1>🎯 Real-time Object Detection</h1>
+        <p class="subtitle">AI-powered object detection in your browser</p>
+        
+        <div class="status">
+            <div class="status-text" id="statusText">Click "Start Detection" to begin</div>
+        </div>
+        
+        <div class="video-container">
+            <video id="video" autoplay playsinline muted></video>
+            <canvas id="canvas"></canvas>
+        </div>
+        
+        <div class="controls">
+            <button id="startBtn">Start Detection</button>
+            <button id="stopBtn" disabled>Stop Detection</button>
+            <button id="switchBtn" disabled>Switch Camera</button>
+        </div>
+        
+        <div class="stats">
+            <div class="stat-card">
+                <div class="stat-label">Objects Detected</div>
+                <div class="stat-value" id="objectCount">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">FPS</div>
+                <div class="stat-value" id="fps">0</div>
+            </div>
+            <div class="stat-card">
+                <div class="stat-label">Model Status</div>
+                <div class="stat-value" id="modelStatus" style="font-size: 16px;">Not Loaded</div>
+            </div>
+        </div>
+        
+        <div class="error" id="errorMsg"></div>
+    </div>
 
-  <div id="container">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-  </div>
+    <script>
+        const video = document.getElementById('video');
+        const canvas = document.getElementById('canvas');
+        const ctx = canvas.getContext('2d');
+        const startBtn = document.getElementById('startBtn');
+        const stopBtn = document.getElementById('stopBtn');
+        const switchBtn = document.getElementById('switchBtn');
+        const statusText = document.getElementById('statusText');
+        const objectCount = document.getElementById('objectCount');
+        const fpsDisplay = document.getElementById('fps');
+        const modelStatus = document.getElementById('modelStatus');
+        const errorMsg = document.getElementById('errorMsg');
 
-  <div id="controls">
-    <button id="startBtn" disabled>Start Camera</button>
-    <button id="snapshotBtn" disabled>Capture Snapshot</button>
-    <div id="status">Loading YOLO model…</div>
-  </div>
+        let model = null;
+        let stream = null;
+        let animationId = null;
+        let currentCamera = 'user'; // 'user' for front, 'environment' for back
+        let isDetecting = false;
+        
+        // FPS calculation
+        let lastFrameTime = Date.now();
+        let frameCount = 0;
+        let fpsValue = 0;
 
-  <!-- Hidden canvas used for 640x640 preprocessing -->
-  <canvas id="preprocessCanvas"></canvas>
+        // Color palette for different objects
+        const colors = [
+            '#FF6B6B', '#4ECDC4', '#45B7D1', '#FFA07A', '#98D8C8',
+            '#F7DC6F', '#BB8FCE', '#85C1E2', '#F8B739', '#52B788',
+            '#FF6B9D', '#C9ADA7', '#4A90E2', '#E07A5F', '#81B29A'
+        ];
 
-  <!-- ONNX Runtime for Web -->
-  <script src="https://cdn.jsdelivr.net/npm/onnxruntime-web/dist/ort.min.js"></script>
+        async function loadModel() {
+            try {
+                statusText.innerHTML = 'Loading AI model...<span class="loading"></span>';
+                modelStatus.textContent = 'Loading...';
+                
+                // Load COCO-SSD model (optimized for mobile)
+                model = await cocoSsd.load({
+                    base: 'mobilenet_v2' // Optimized for mobile performance
+                });
+                
+                statusText.textContent = 'Model loaded successfully! Ready to detect objects.';
+                modelStatus.textContent = '✓ Ready';
+                modelStatus.style.color = '#52B788';
+                return true;
+            } catch (error) {
+                showError('Failed to load model: ' + error.message);
+                modelStatus.textContent = '✗ Failed';
+                modelStatus.style.color = '#c33';
+                return false;
+            }
+        }
 
-  <script>
-    /**********************
-     * CONFIG
-     **********************/
-    // YOLOv8n ONNX model hosted on Hugging Face (public, CORS-enabled)
-    // If this ever changes, you can host your own yolov8n.onnx and update MODEL_URL.
-    const MODEL_URL =
-      "https://huggingface.co/SpotLab/YOLOv8Detection/resolve/3005c6751fb19cdeb6b10c066185908faf66a097/yolov8n.onnx?download=1";
+        async function setupCamera() {
+            try {
+                // Stop existing stream if any
+                if (stream) {
+                    stream.getTracks().forEach(track => track.stop());
+                }
 
-    const INPUT_SIZE = 640;        // YOLOv8n input is 640x640
-    const SCORE_THRESHOLD = 0.35;  // minimum confidence
-    const IOU_THRESHOLD = 0.45;    // NMS IoU threshold
-    const DETECTION_INTERVAL = 130; // ms between frames
+                const constraints = {
+                    video: {
+                        facingMode: currentCamera,
+                        width: { ideal: 1280 },
+                        height: { ideal: 720 }
+                    }
+                };
 
-    // COCO class labels (English)
-    const COCO_CLASSES = [
-      "person","bicycle","car","motorcycle","airplane","bus","train","truck","boat","traffic light",
-      "fire hydrant","stop sign","parking meter","bench","bird","cat","dog","horse","sheep","cow",
-      "elephant","bear","zebra","giraffe","backpack","umbrella","handbag","tie","suitcase",
-      "frisbee","skis","snowboard","sports ball","kite","baseball bat","baseball glove","skateboard",
-      "surfboard","tennis racket","bottle","wine glass","cup","fork","knife","spoon","bowl",
-      "banana","apple","sandwich","orange","broccoli","carrot","hot dog","pizza","donut","cake",
-      "chair","couch","potted plant","bed","dining table","toilet","tv","laptop","mouse","remote",
-      "keyboard","cell phone","microwave","oven","toaster","sink","refrigerator","book","clock",
-      "vase","scissors","teddy bear","hair drier","toothbrush"
-    ];
+                stream = await navigator.mediaDevices.getUserMedia(constraints);
+                video.srcObject = stream;
 
-    const COLORS = [
-      "#ff5252","#4caf50","#40c4ff","#ffeb3b","#e040fb","#ff9800","#00e5ff","#9ccc65"
-    ];
+                return new Promise((resolve) => {
+                    video.onloadedmetadata = () => {
+                        video.play();
+                        canvas.width = video.videoWidth;
+                        canvas.height = video.videoHeight;
+                        resolve();
+                    };
+                });
+            } catch (error) {
+                showError('Camera access denied or not available: ' + error.message);
+                throw error;
+            }
+        }
 
-    /**********************
-     * DOM ELEMENTS
-     **********************/
-    const video = document.getElementById("video");
-    const overlay = document.getElementById("overlay");
-    const ctx = overlay.getContext("2d");
-    const preprocessCanvas = document.getElementById("preprocessCanvas");
-    const preprocessCtx = preprocessCanvas.getContext("2d");
-    const startBtn = document.getElementById("startBtn");
-    const snapshotBtn = document.getElementById("snapshotBtn");
-    const statusEl = document.getElementById("status");
+        async function detectObjects() {
+            if (!isDetecting || !model) return;
 
-    /**********************
-     * STATE
-     **********************/
-    let session = null;
-    let isDetecting = false;
-    let lastDetectionTime = 0;
+            try {
+                // Detect objects
+                const predictions = await model.detect(video);
 
-    /**********************
-     * MODEL LOADING
-     **********************/
-    async function loadModel() {
-      try {
-        statusEl.textContent = "Loading YOLOv8n model (ONNX)…";
-        session = await ort.InferenceSession.create(MODEL_URL, {
-          executionProviders: ["wasm"],
+                // Clear canvas
+                ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+                // Update object count
+                objectCount.textContent = predictions.length;
+
+                // Draw predictions
+                predictions.forEach((prediction, index) => {
+                    const [x, y, width, height] = prediction.bbox;
+                    const color = colors[index % colors.length];
+
+                    // Draw bounding box
+                    ctx.strokeStyle = color;
+                    ctx.lineWidth = 4;
+                    ctx.strokeRect(x, y, width, height);
+
+                    // Draw label background
+                    const label = `${prediction.class} ${Math.round(prediction.score * 100)}%`;
+                    ctx.font = 'bold 18px Arial';
+                    const textWidth = ctx.measureText(label).width;
+                    const textHeight = 24;
+
+                    ctx.fillStyle = color;
+                    ctx.fillRect(x, y - textHeight - 4, textWidth + 16, textHeight + 4);
+
+                    // Draw label text
+                    ctx.fillStyle = '#fff';
+                    ctx.fillText(label, x + 8, y - 8);
+
+                    // Draw corner accents
+                    const cornerLength = 20;
+                    ctx.lineWidth = 4;
+                    
+                    // Top-left
+                    ctx.beginPath();
+                    ctx.moveTo(x, y + cornerLength);
+                    ctx.lineTo(x, y);
+                    ctx.lineTo(x + cornerLength, y);
+                    ctx.stroke();
+
+                    // Top-right
+                    ctx.beginPath();
+                    ctx.moveTo(x + width - cornerLength, y);
+                    ctx.lineTo(x + width, y);
+                    ctx.lineTo(x + width, y + cornerLength);
+                    ctx.stroke();
+
+                    // Bottom-left
+                    ctx.beginPath();
+                    ctx.moveTo(x, y + height - cornerLength);
+                    ctx.lineTo(x, y + height);
+                    ctx.lineTo(x + cornerLength, y + height);
+                    ctx.stroke();
+
+                    // Bottom-right
+                    ctx.beginPath();
+                    ctx.moveTo(x + width - cornerLength, y + height);
+                    ctx.lineTo(x + width, y + height);
+                    ctx.lineTo(x + width, y + height - cornerLength);
+                    ctx.stroke();
+                });
+
+                // Calculate FPS
+                frameCount++;
+                const now = Date.now();
+                if (now - lastFrameTime >= 1000) {
+                    fpsValue = frameCount;
+                    fpsDisplay.textContent = fpsValue;
+                    frameCount = 0;
+                    lastFrameTime = now;
+                }
+
+                // Continue detection
+                animationId = requestAnimationFrame(detectObjects);
+            } catch (error) {
+                console.error('Detection error:', error);
+                showError('Detection error: ' + error.message);
+            }
+        }
+
+        async function startDetection() {
+            try {
+                startBtn.disabled = true;
+                
+                // Load model if not loaded
+                if (!model) {
+                    const loaded = await loadModel();
+                    if (!loaded) {
+                        startBtn.disabled = false;
+                        return;
+                    }
+                }
+
+                // Setup camera
+                statusText.textContent = 'Starting camera...';
+                await setupCamera();
+
+                // Start detection
+                isDetecting = true;
+                statusText.textContent = '🎥 Detecting objects in real-time...';
+                stopBtn.disabled = false;
+                switchBtn.disabled = false;
+                
+                detectObjects();
+            } catch (error) {
+                startBtn.disabled = false;
+                showError('Failed to start detection: ' + error.message);
+            }
+        }
+
+        function stopDetection() {
+            isDetecting = false;
+            
+            if (animationId) {
+                cancelAnimationFrame(animationId);
+                animationId = null;
+            }
+
+            if (stream) {
+                stream.getTracks().forEach(track => track.stop());
+                stream = null;
+            }
+
+            ctx.clearRect(0, 0, canvas.width, canvas.height);
+            
+            startBtn.disabled = false;
+            stopBtn.disabled = true;
+            switchBtn.disabled = true;
+            statusText.textContent = 'Detection stopped. Click "Start Detection" to resume.';
+            objectCount.textContent = '0';
+            fpsDisplay.textContent = '0';
+        }
+
+        async function switchCamera() {
+            currentCamera = currentCamera === 'user' ? 'environment' : 'user';
+            
+            if (isDetecting) {
+                stopBtn.disabled = true;
+                switchBtn.disabled = true;
+                statusText.textContent = 'Switching camera...';
+                
+                await setupCamera();
+                
+                stopBtn.disabled = false;
+                switchBtn.disabled = false;
+                statusText.textContent = '🎥 Detecting objects in real-time...';
+            }
+        }
+
+        function showError(message) {
+            errorMsg.textContent = '⚠️ ' + message;
+            errorMsg.style.display = 'block';
+            setTimeout(() => {
+                errorMsg.style.display = 'none';
+            }, 5000);
+        }
+
+        // Event listeners
+        startBtn.addEventListener('click', startDetection);
+        stopBtn.addEventListener('click', stopDetection);
+        switchBtn.addEventListener('click', switchCamera);
+
+        // Handle page visibility
+        document.addEventListener('visibilitychange', () => {
+            if (document.hidden && isDetecting) {
+                stopDetection();
+            }
         });
-        statusEl.textContent = "Model loaded. Tap “Start Camera”.";
-        startBtn.disabled = false;
-      } catch (err) {
-        console.error("Model load error:", err);
-        statusEl.textContent = "Model load error: " + err.message;
-      }
-    }
 
-    /**********************
-     * CAMERA
-     **********************/
-    async function startCamera() {
-      if (!session) {
-        statusEl.textContent = "Model not ready yet.";
-        return;
-      }
-
-      try {
-        startBtn.disabled = true;
-
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment",
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
+        // Preload model on page load
+        window.addEventListener('load', () => {
+            loadModel();
         });
-
-        video.srcObject = stream;
-
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => {
-            video.play();
-            resolve();
-          };
-        });
-
-        resizeCanvases();
-        window.addEventListener("resize", resizeCanvases);
-
-        isDetecting = true;
-        snapshotBtn.disabled = false;
-        statusEl.textContent = "Camera running. YOLOv8 detections in real time…";
-
-        requestAnimationFrame(loop);
-      } catch (err) {
-        console.error("Camera error:", err);
-        startBtn.disabled = false;
-        statusEl.textContent = "Camera error: " + err.message;
-      }
-    }
-
-    function resizeCanvases() {
-      if (!video.videoWidth || !video.videoHeight) return;
-
-      const aspectRatio = video.videoWidth / video.videoHeight;
-      const container = document.getElementById("container");
-      const containerWidth = container.clientWidth;
-      const containerHeight = containerWidth / aspectRatio;
-
-      video.width = containerWidth;
-      video.height = containerHeight;
-      overlay.width = containerWidth;
-      overlay.height = containerHeight;
-    }
-
-    /**********************
-     * PREPROCESSING
-     * - Resize frame to 640x640
-     * - Normalize to [0,1]
-     * - Convert to NCHW float32
-     **********************/
-    function preprocessFrame() {
-      preprocessCanvas.width = INPUT_SIZE;
-      preprocessCanvas.height = INPUT_SIZE;
-
-      // Draw current video frame into the 640x640 canvas
-      preprocessCtx.drawImage(
-        video,
-        0,
-        0,
-        preprocessCanvas.width,
-        preprocessCanvas.height
-      );
-
-      const imageData = preprocessCtx.getImageData(
-        0,
-        0,
-        INPUT_SIZE,
-        INPUT_SIZE
-      );
-      const { data } = imageData; // Uint8ClampedArray (RGBA)
-
-      // Convert to Float32 [1, 3, 640, 640], normalized 0..1, RGB
-      const floatData = new Float32Array(1 * 3 * INPUT_SIZE * INPUT_SIZE);
-      let idx = 0; // index into floatData
-
-      for (let y = 0; y < INPUT_SIZE; y++) {
-        for (let x = 0; x < INPUT_SIZE; x++) {
-          const i = (y * INPUT_SIZE + x) * 4;
-          const r = data[i] / 255;
-          const g = data[i + 1] / 255;
-          const b = data[i + 2] / 255;
-
-          // NCHW: [1, C, H, W]
-          const offsetR = 0;
-          const offsetG = INPUT_SIZE * INPUT_SIZE;
-          const offsetB = 2 * INPUT_SIZE * INPUT_SIZE;
-
-          const pixelIndex = y * INPUT_SIZE + x;
-
-          floatData[offsetR + pixelIndex] = r;
-          floatData[offsetG + pixelIndex] = g;
-          floatData[offsetB + pixelIndex] = b;
-        }
-      }
-
-      const inputTensor = new ort.Tensor("float32", floatData, [
-        1,
-        3,
-        INPUT_SIZE,
-        INPUT_SIZE,
-      ]);
-
-      return inputTensor;
-    }
-
-    /**********************
-     * POSTPROCESSING
-     * YOLOv8n ONNX typical output: [1, 84, N]
-     *  - first 4: x, y, w, h (center format, relative to input)
-     *  - remaining 80: class confidences
-     **********************/
-    function sigmoid(x) {
-      return 1 / (1 + Math.exp(-x));
-    }
-
-    function xywh2xyxy(x, y, w, h) {
-      // center x,y, width, height -> x1,y1,x2,y2
-      const x1 = x - w / 2;
-      const y1 = y - h / 2;
-      const x2 = x + w / 2;
-      const y2 = y + h / 2;
-      return [x1, y1, x2, y2];
-    }
-
-    function iou(box1, box2) {
-      const [x1, y1, x2, y2] = box1;
-      const [x3, y3, x4, y4] = box2;
-
-      const interX1 = Math.max(x1, x3);
-      const interY1 = Math.max(y1, y3);
-      const interX2 = Math.min(x2, x4);
-      const interY2 = Math.min(y2, y4);
-
-      const interArea = Math.max(interX2 - interX1, 0) * Math.max(interY2 - interY1, 0);
-      const area1 = Math.max(x2 - x1, 0) * Math.max(y2 - y1, 0);
-      const area2 = Math.max(x4 - x3, 0) * Math.max(y4 - y3, 0);
-
-      const union = area1 + area2 - interArea;
-      return union <= 0 ? 0 : interArea / union;
-    }
-
-    function nonMaxSuppression(boxes, scores, classIds, iouThreshold) {
-      const indices = scores
-        .map((score, idx) => ({ score, idx }))
-        .sort((a, b) => b.score - a.score)
-        .map((item) => item.idx);
-
-      const picked = [];
-
-      while (indices.length > 0) {
-        const current = indices.shift();
-        picked.push(current);
-
-        const rest = [];
-        for (const idx of indices) {
-          if (classIds[idx] !== classIds[current]) {
-            // keep different classes
-            rest.push(idx);
-            continue;
-          }
-
-          const iouVal = iou(boxes[current], boxes[idx]);
-          if (iouVal < iouThreshold) {
-            rest.push(idx);
-          }
-        }
-        indices.splice(0, indices.length, ...rest);
-      }
-
-      return picked;
-    }
-
-    function processDetections(output, frameWidth, frameHeight) {
-      // output: ort.Tensor, shape [1, 84, N]
-      const [batch, channels, numBoxes] = output.dims;
-      const data = output.data; // Float32Array length = 1*84*N
-
-      const boxes = [];
-      const scores = [];
-      const classIds = [];
-
-      for (let i = 0; i < numBoxes; i++) {
-        const x = data[0 * numBoxes + i];
-        const y = data[1 * numBoxes + i];
-        const w = data[2 * numBoxes + i];
-        const h = data[3 * numBoxes + i];
-
-        let maxScore = -Infinity;
-        let classId = -1;
-
-        for (let c = 4; c < channels; c++) {
-          const score = data[c * numBoxes + i];
-          if (score > maxScore) {
-            maxScore = score;
-            classId = c - 4;
-          }
-        }
-
-        const finalScore = sigmoid(maxScore); // YOLOv8 already applies sigmoid, but safe
-        if (finalScore < SCORE_THRESHOLD) continue;
-        if (classId < 0 || classId >= COCO_CLASSES.length) continue;
-
-        const [x1, y1, x2, y2] = xywh2xyxy(x, y, w, h);
-
-        // Scale from model-space (0..INPUT_SIZE) to frame-space
-        const sx1 = (x1 / INPUT_SIZE) * frameWidth;
-        const sy1 = (y1 / INPUT_SIZE) * frameHeight;
-        const sx2 = (x2 / INPUT_SIZE) * frameWidth;
-        const sy2 = (y2 / INPUT_SIZE) * frameHeight;
-
-        boxes.push([sx1, sy1, sx2, sy2]);
-        scores.push(finalScore);
-        classIds.push(classId);
-      }
-
-      // Apply NMS
-      const keep = nonMaxSuppression(boxes, scores, classIds, IOU_THRESHOLD);
-
-      const results = keep.map((idx) => ({
-        box: boxes[idx],
-        score: scores[idx],
-        classId: classIds[idx],
-        label: COCO_CLASSES[classIds[idx]],
-      }));
-
-      return results;
-    }
-
-    /**********************
-     * DRAWING
-     **********************/
-    function drawDetections(detections) {
-      ctx.clearRect(0, 0, overlay.width, overlay.height);
-      ctx.lineWidth = 2;
-      ctx.font = "14px system-ui, sans-serif";
-
-      detections.forEach((det, i) => {
-        const [x1, y1, x2, y2] = det.box;
-        const w = x2 - x1;
-        const h = y2 - y1;
-        const color = COLORS[i % COLORS.length];
-
-        const labelText = `${det.label} ${(det.score * 100).toFixed(1)}%`;
-
-        // Box
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        ctx.rect(x1, y1, w, h);
-        ctx.stroke();
-
-        // Label background
-        const textPadding = 4;
-        const textWidth = ctx.measureText(labelText).width;
-        const textHeight = 16;
-        const bgX = x1;
-        const bgY = Math.max(y1 - (textHeight + 4), 0);
-
-        ctx.fillStyle = color;
-        ctx.fillRect(bgX, bgY, textWidth + textPadding * 2, textHeight + 4);
-
-        // Label text (English)
-        ctx.fillStyle = "#000";
-        ctx.fillText(
-          labelText,
-          bgX + textPadding,
-          bgY + textHeight - 2
-        );
-      });
-    }
-
-    /**********************
-     * MAIN LOOP
-     **********************/
-    async function detectOnce() {
-      if (!session || !video.videoWidth || !video.videoHeight) return;
-
-      const inputTensor = preprocessFrame();
-
-      const feeds = {};
-      const inputName = session.inputNames[0];
-      feeds[inputName] = inputTensor;
-
-      const results = await session.run(feeds);
-      const outputName = session.outputNames[0];
-      const output = results[outputName];
-
-      const detections = processDetections(
-        output,
-        overlay.width,
-        overlay.height
-      );
-      drawDetections(detections);
-    }
-
-    async function loop(timestamp) {
-      if (!isDetecting) return;
-
-      if (!lastDetectionTime || timestamp - lastDetectionTime > DETECTION_INTERVAL) {
-        lastDetectionTime = timestamp;
-        try {
-          await detectOnce();
-        } catch (err) {
-          console.error("Detection error:", err);
-          statusEl.textContent = "Detection error: " + err.message;
-        }
-      }
-
-      requestAnimationFrame(loop);
-    }
-
-    /**********************
-     * SNAPSHOT BUTTON
-     * - Runs detection one time and keeps boxes on screen
-     **********************/
-    async function snapshotDetect() {
-      if (!session || !video.videoWidth || !video.videoHeight) return;
-      statusEl.textContent = "Running YOLO on snapshot…";
-      try {
-        await detectOnce();
-        statusEl.textContent = "Snapshot detection done. Live detection still active.";
-      } catch (err) {
-        console.error("Snapshot detection error:", err);
-        statusEl.textContent = "Snapshot error: " + err.message;
-      }
-    }
-
-    /**********************
-     * EVENT HOOKUP
-     **********************/
-    window.addEventListener("load", () => {
-      loadModel();
-    });
-
-    startBtn.addEventListener("click", startCamera);
-    snapshotBtn.addEventListener("click", snapshotDetect);
-  </script>
+    </script>
 </body>
 </html>
