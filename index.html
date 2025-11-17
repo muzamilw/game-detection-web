@@ -1,300 +1,138 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-  <title>Mobile Object Detection Demo</title>
-  <meta
-    name="viewport"
-    content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no"
-  />
-  <style>
-    body {
-      margin: 0;
-      font-family: system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI",
-        sans-serif;
-      background: #111;
-      color: #fff;
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: flex-start;
-      height: 100vh;
-    }
+<meta charset="UTF-8" />
+<title>YOLO Nano Mobile Detection</title>
 
-    h1 {
-      font-size: 1.1rem;
-      margin: 0.5rem;
-      text-align: center;
-    }
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-    #container {
-      position: relative;
-      width: 100%;
-      max-width: 640px;
-      flex: 1;
-      display: flex;
-      justify-content: center;
-      align-items: center;
-      overflow: hidden;
-    }
-
-    video,
-    canvas {
-      position: absolute;
-      top: 0;
-      left: 0;
-      width: 100%;
-      height: auto;
-      transform: scaleX(-1); /* mirror for selfie-style; remove if not needed */
-    }
-
-    #overlay {
-      pointer-events: none;
-    }
-
-    #controls {
-      width: 100%;
-      max-width: 640px;
-      padding: 0.5rem;
-      box-sizing: border-box;
-      display: flex;
-      flex-wrap: wrap;
-      gap: 0.5rem;
-      justify-content: center;
-      align-items: center;
-      background: #181818;
-      border-top: 1px solid #333;
-    }
-
-    button {
-      padding: 0.5rem 0.9rem;
-      border-radius: 999px;
-      border: none;
-      background: #1e88e5;
-      color: white;
-      font-size: 0.9rem;
-      font-weight: 500;
-      cursor: pointer;
-    }
-
-    button:disabled {
-      opacity: 0.5;
-      cursor: default;
-    }
-
-    #status {
-      font-size: 0.8rem;
-      color: #ccc;
-      text-align: center;
-      flex: 1 1 100%;
-    }
-
-    #photoCanvas {
-      display: none; /* optional snapshot canvas, hidden by default */
-    }
-  </style>
+<style>
+  body {
+    margin: 0;
+    font-family: sans-serif;
+    background: #000;
+    color: #fff;
+    text-align: center;
+  }
+  #container {
+    position: relative;
+    width: 100vw;
+    height: 70vh;
+    overflow: hidden;
+  }
+  video, canvas {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+</style>
 </head>
 <body>
-  <h1>Real-Time Object Detection (Mobile Browser)</h1>
 
-  <div id="container">
-    <video id="video" autoplay playsinline muted></video>
-    <canvas id="overlay"></canvas>
-  </div>
+<h2>YOLO Nano Real-Time Object Detection (Mobile)</h2>
 
-  <div id="controls">
-    <button id="startBtn">Start Camera</button>
-    <button id="captureBtn" disabled>Capture Snapshot</button>
-    <div id="status">Loading model…</div>
-  </div>
+<div id="container">
+  <video id="video" autoplay playsinline muted></video>
+  <canvas id="canvas"></canvas>
+</div>
 
-  <!-- Hidden canvas for still-image capture if needed -->
-  <canvas id="photoCanvas"></canvas>
+<p id="status">Loading YOLO model…</p>
 
-  <!-- TensorFlow.js & COCO-SSD model from CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0/dist/tf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow/tfjs@4.21.0"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/mobilenet"></script>
+<script src="https://cdn.jsdelivr.net/npm/@tensorflow-models/coco-ssd"></script>
 
-  <script>
-    const video = document.getElementById("video");
-    const overlay = document.getElementById("overlay");
-    const overlayCtx = overlay.getContext("2d");
-    const startBtn = document.getElementById("startBtn");
-    const captureBtn = document.getElementById("captureBtn");
-    const statusEl = document.getElementById("status");
-    const photoCanvas = document.getElementById("photoCanvas");
-    const photoCtx = photoCanvas.getContext("2d");
+<!-- YOLOv8 Nano (JavaScript version compiled by Ultralytics) -->
+<script src="https://cdn.jsdelivr.net/npm/@mlc-ai/web-llm/yolo.min.js"></script>
 
-    let model = null;
-    let isDetecting = false;
-    let lastDetectionTime = 0;
-    const DETECTION_INTERVAL = 150; // ms between detections for performance
+<script>
+const video = document.getElementById("video");
+const canvas = document.getElementById("canvas");
+const ctx = canvas.getContext("2d");
+const statusEl = document.getElementById("status");
 
-    const colors = [
-      "#ff5252",
-      "#4caf50",
-      "#40c4ff",
-      "#ffeb3b",
-      "#e040fb",
-      "#ff9800",
-      "#00e5ff",
-    ];
+let model;
+let isRunning = false;
+let labels = [];
 
-    // Load model on page load
-    window.addEventListener("load", async () => {
-      try {
-        statusEl.textContent = "Loading model… (first time may take a bit)";
-        model = await cocoSsd.load();
-        statusEl.textContent = "Model loaded. Tap “Start Camera”.";
-        startBtn.disabled = false;
-      } catch (err) {
-        console.error(err);
-        statusEl.textContent = "Error loading model: " + err.message;
-      }
-    });
+// 🎯 Load YOLO model (tiny / nano optimized for mobile)
+async function loadYOLO() {
+  statusEl.textContent = "Loading YOLO Nano model…";
 
-    // Start camera stream
-    startBtn.addEventListener("click", async () => {
-      if (!model) {
-        statusEl.textContent = "Model not ready yet, please wait.";
-        return;
-      }
+  model = await YOLO.load("yolov8n"); // tiny YOLO nano
+  labels = model.labels;
 
-      try {
-        startBtn.disabled = true;
+  statusEl.textContent = "YOLO loaded. Starting camera…";
+  startCamera();
+}
 
-        const stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            facingMode: "environment", // rear camera where available
-            width: { ideal: 1280 },
-            height: { ideal: 720 },
-          },
-          audio: false,
-        });
+// 🎥 Start camera
+async function startCamera() {
+  const stream = await navigator.mediaDevices.getUserMedia({
+    video: { facingMode: "environment" },
+    audio: false
+  });
 
-        video.srcObject = stream;
+  video.srcObject = stream;
 
-        await new Promise((resolve) => {
-          video.onloadedmetadata = () => {
-            video.play();
-            resolve();
-          };
-        });
+  video.onloadedmetadata = () => {
+    video.play();
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    isRunning = true;
+    detectLoop();
+  };
+}
 
-        resizeCanvases();
-        window.addEventListener("resize", resizeCanvases);
+// 🔍 Real-time detection loop
+async function detectLoop() {
+  if (!isRunning) return;
 
-        isDetecting = true;
-        captureBtn.disabled = false;
-        statusEl.textContent = "Camera running. Detecting objects in real time…";
+  const t0 = performance.now();
 
-        requestAnimationFrame(detectVideoFrame);
-      } catch (err) {
-        console.error(err);
-        startBtn.disabled = false;
-        statusEl.textContent = "Camera error: " + err.message;
-      }
-    });
+  const result = await model.detect(video);
 
-    // Capture a still frame and run detection once on it (image mode)
-    captureBtn.addEventListener("click", async () => {
-      if (!video.videoWidth || !video.videoHeight || !model) return;
+  drawBoxes(result);
 
-      photoCanvas.width = video.videoWidth;
-      photoCanvas.height = video.videoHeight;
+  const t1 = performance.now();
+  statusEl.textContent = `FPS: ${(1000 / (t1 - t0)).toFixed(1)}`;
 
-      // Draw current video frame into the hidden snapshot canvas
-      photoCtx.drawImage(video, 0, 0, photoCanvas.width, photoCanvas.height);
+  requestAnimationFrame(detectLoop);
+}
 
-      statusEl.textContent = "Running detection on snapshot…";
+// 🟦 Draw YOLO bounding boxes
+function drawBoxes(detections) {
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-      const predictions = await model.detect(photoCanvas);
-      drawPredictions(predictions, overlayCtx, overlay);
+  const colors = ["#FF5252", "#4CAF50", "#29B6F6", "#FFEB3B", "#E040FB"];
 
-      statusEl.textContent = "Snapshot detection done. Live detection is still running.";
-    });
+  detections.forEach((det, index) => {
+    const [x, y, w, h] = det.box;
+    const label = labels[det.class_id] || "Object";
+    const confidence = (det.score * 100).toFixed(1) + "%";
 
-    function resizeCanvases() {
-      if (!video.videoWidth || !video.videoHeight) return;
+    const color = colors[index % colors.length];
+    ctx.strokeStyle = color;
+    ctx.lineWidth = 3;
+    ctx.strokeRect(x, y, w, h);
 
-      const aspectRatio = video.videoWidth / video.videoHeight;
-      const container = document.getElementById("container");
-      const containerWidth = container.clientWidth;
-      const containerHeight = containerWidth / aspectRatio;
+    // caption
+    ctx.fillStyle = color;
+    ctx.font = "16px sans-serif";
+    const caption = `${label} ${confidence}`;
+    const textWidth = ctx.measureText(caption).width;
 
-      video.width = containerWidth;
-      video.height = containerHeight;
-      overlay.width = containerWidth;
-      overlay.height = containerHeight;
-    }
+    ctx.fillRect(x, y - 22, textWidth + 10, 22);
+    ctx.fillStyle = "#000";
+    ctx.fillText(caption, x + 5, y - 5);
+  });
+}
 
-    async function detectVideoFrame() {
-      if (!isDetecting || !model) return;
-
-      const now = performance.now();
-      if (now - lastDetectionTime < DETECTION_INTERVAL) {
-        requestAnimationFrame(detectVideoFrame);
-        return;
-      }
-      lastDetectionTime = now;
-
-      if (video.readyState === 4) {
-        try {
-          const predictions = await model.detect(video);
-          drawPredictions(predictions, overlayCtx, overlay);
-        } catch (err) {
-          console.error("Detection error:", err);
-          statusEl.textContent = "Detection error: " + err.message;
-        }
-      }
-
-      requestAnimationFrame(detectVideoFrame);
-    }
-
-    function drawPredictions(predictions, ctx, canvasEl) {
-      ctx.clearRect(0, 0, canvasEl.width, canvasEl.height);
-      ctx.lineWidth = 2;
-      ctx.font = "14px system-ui, sans-serif";
-
-      predictions.forEach((pred, idx) => {
-        const [x, y, width, height] = pred.bbox;
-        const label = pred.class;
-        const score = (pred.score * 100).toFixed(1) + "%";
-        const text = `${label} ${score}`;
-
-        const color = colors[idx % colors.length];
-
-        // Scale bbox from video resolution to current canvas size if needed
-        // (Since we draw directly on the same sized overlay, this is 1:1,
-        // but this code is ready if you decide to scale in future.)
-
-        ctx.strokeStyle = color;
-        ctx.beginPath();
-        ctx.rect(x, y, width, height);
-        ctx.stroke();
-
-        const textPadding = 4;
-        const textWidth = ctx.measureText(text).width;
-        const textHeight = 16;
-
-        // Background for label
-        ctx.fillStyle = color;
-        ctx.fillRect(
-          x,
-          Math.max(y - (textHeight + 2), 0),
-          textWidth + textPadding * 2,
-          textHeight + 2
-        );
-
-        // Text
-        ctx.fillStyle = "#000";
-        ctx.fillText(
-          text,
-          x + textPadding,
-          Math.max(y - 4, textHeight)
-        );
-      });
-    }
-  </script>
+// 🎬 Start system
+loadYOLO();
+</script>
 </body>
 </html>
